@@ -304,17 +304,7 @@ class RecorderService : AccessibilityService() {
             } catch (e: InterruptedException) {
                 throw java.lang.RuntimeException(e)
             }
-            val scrollRecyclerView =
-                au.findAndScrollListView(
-                    au.getTopMostParentNode(
-                        rootInActiveWindow
-                    ), "androidx.recyclerview.widget.RecyclerView"
-                )
-            if (scrollRecyclerView != null) {
-                readTransaction()
-                scrollRecyclerView.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-            }
-
+            readTransaction()
         }
     }
 
