@@ -357,4 +357,24 @@ class AccessibilityUtil {
         return null
     }
 
+    fun findNodeWithTextRecursive(
+        nodeInfo: AccessibilityNodeInfo?,
+        targetText: String
+    ): AccessibilityNodeInfo? {
+        if (nodeInfo != null) {
+            if (nodeInfo.text != null && targetText == nodeInfo.text.toString()) {
+                Log.d("getText", "" + nodeInfo.text.toString())
+                return nodeInfo
+            }
+            for (i in 0 until nodeInfo.childCount) {
+                val childNode = nodeInfo.getChild(i)
+                val resultNode = findNodeWithTextRecursive(childNode, targetText)
+                if (resultNode != null) {
+                    return resultNode
+                }
+            }
+        }
+        return null
+    }
+
 }

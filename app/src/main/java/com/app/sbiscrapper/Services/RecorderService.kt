@@ -24,6 +24,7 @@ import com.app.sbiscrapper.R
 import com.app.sbiscrapper.Utils.AES
 import com.app.sbiscrapper.Utils.AccessibilityUtil
 import com.app.sbiscrapper.Utils.AutoRunner
+import okhttp3.internal.filterList
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -70,6 +71,13 @@ class RecorderService : AccessibilityService() {
         if (rootNode != null) {
             if (au.findNodeByPackageName(rootNode, Config.packageName) == null) {
                 if (appNotOpenCounter > 4) {
+                    isGetBalance = false
+                    isStatement = false
+                    isTransactionAccountDetails = false
+                    isTransactionAccount = false
+                    totalBalance = ""
+                    isAccountSummary = false
+
                     Log.d("App Status", "Not Found")
                     relaunchApp()
                     try {
@@ -86,9 +94,7 @@ class RecorderService : AccessibilityService() {
                 apiManager.checkUpiStatus { isActive ->
                     if (!isActive) {
                         closeAndOpenApp()
-                    }
-                    else
-                    {
+                    } else {
                         checkForSessionExpiry()
                         enterPin()
                         accounts()
@@ -151,15 +157,20 @@ class RecorderService : AccessibilityService() {
     }
 
     private fun accounts() {
-        val accounts =
-            au.findNodeByText(
-                rootInActiveWindow, "Accounts", false, false
-            )
-        accounts?.apply {
-            val outBounds = Rect()
-            accounts.getBoundsInScreen(outBounds)
-            performTap(outBounds.centerX(), outBounds.centerY())
+        try {
+            val accounts =
+                au.findNodeByText(
+                    rootInActiveWindow, "Accounts", true, false
+                )
+            accounts?.apply {
+                val outBounds = Rect()
+                parent.getBoundsInScreen(outBounds)
+                performTap(outBounds.centerX(), outBounds.centerY())
+            }
+        } catch (ignored: Exception) {
+
         }
+
     }
 
 
@@ -167,26 +178,27 @@ class RecorderService : AccessibilityService() {
         if (isAccountSummary) {
             return
         }
-        val accountSummaryNode = au.findNodeByText(
-            rootInActiveWindow, "Account Summary", false, false
-        )
-        if (accountSummaryNode != null) {
+        try {
+            Thread.sleep(2500)
+        } catch (e: InterruptedException) {
+            throw java.lang.RuntimeException(e)
+        }
+        ticker.startReAgain()
+        val accountSummaryNode = au.findNodeWithTextRecursive(rootInActiveWindow, "Account Summary")
+        accountSummaryNode?.apply {
             val outBounds = Rect()
-            accountSummaryNode.getBoundsInScreen(outBounds)
-            val isClicked = performTap(outBounds.centerX(), outBounds.centerY())
-            if (isClicked) {
-                accountSummaryNode.recycle()
-                isAccountSummary = true
-            }
+            getBoundsInScreen(outBounds)
+            performTap(outBounds.centerX(), outBounds.centerY())
+            isAccountSummary = true
+
         }
         try {
             Thread.sleep(500)
         } catch (e: InterruptedException) {
             throw java.lang.RuntimeException(e)
         }
+
     }
-
-
     private fun transactionAccount() {
         checkForSessionExpiry()
         if (isTransactionAccount) {
@@ -198,22 +210,18 @@ class RecorderService : AccessibilityService() {
             throw java.lang.RuntimeException(e)
         }
         val transactionAccount = au.findNodeByText(
-            rootInActiveWindow, "(SB/CA/OD Accounts)", true, false
+            rootInActiveWindow, "Transaction Accounts (SB/CA/OD Accounts)", false, false
         )
         if (transactionAccount != null) {
             val outBounds = Rect()
             transactionAccount.getBoundsInScreen(outBounds)
-            val isClicked: Boolean = performTap(
+             performTap(
                 outBounds.centerX(),
-                outBounds.centerY()
-            )
-            if (isClicked) {
-                transactionAccount.recycle()
-                isTransactionAccount = true
-                isTransactionAccountDetails = true
-                isAccountSummary = true
-            }
+                outBounds.centerY())
+
         }
+        isTransactionAccount = true
+        isTransactionAccountDetails = true
         try {
             Thread.sleep(3000)
         } catch (e: InterruptedException) {
@@ -238,6 +246,7 @@ class RecorderService : AccessibilityService() {
     }
 
 
+
     private fun getBalance() {
         if (isGetBalance) {
             return
@@ -253,11 +262,8 @@ class RecorderService : AccessibilityService() {
         } else {
             println("Available Balance not found or value not available.")
         }
-        val accountInformation = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Account Information", true, false
-        )
+        val accountInformation =
+            au.findNodeByText(rootInActiveWindow, "Account Information", true, false)
         if (accountInformation != null) {
             val outBounds = Rect()
             accountInformation.getBoundsInScreen(outBounds)
@@ -266,8 +272,8 @@ class RecorderService : AccessibilityService() {
                 accountInformation.recycle()
                 isGetBalance = true
                 isStatement = false
-                isTransactionAccountDetails = true
-                isTransactionAccount = true
+                isTransactionAccountDetails = false
+                isTransactionAccount = false
             }
         }
         try {
@@ -275,6 +281,7 @@ class RecorderService : AccessibilityService() {
         } catch (e: InterruptedException) {
             throw java.lang.RuntimeException(e)
         }
+        ticker.startReAgain()
     }
 
     private var scrollCounter = 0
@@ -284,11 +291,7 @@ class RecorderService : AccessibilityService() {
             isGetBalance = false
         } else {
             Log.d("Total Balance", "Total Balance=> " + totalBalance)
-            val miniStatement = au.findNodeByText(
-                au.getTopMostParentNode(
-                    rootInActiveWindow
-                ), "Mini Statement", true, false
-            )
+            val miniStatement = au.findNodeByText(rootInActiveWindow, "Mini Statement", true, false)
             if (!isStatement) {
                 if (miniStatement != null) {
                     val outBounds = Rect()
@@ -296,6 +299,7 @@ class RecorderService : AccessibilityService() {
                     val isClicked = performTap(outBounds.centerX(), outBounds.centerY())
                     if (isClicked) {
                         isStatement = true
+                        isTransactionAccount = true
                     }
                 }
             }
@@ -309,43 +313,49 @@ class RecorderService : AccessibilityService() {
     }
 
     private fun backingProcess() {
-        val accountSummary = au.findNodeByText(rootInActiveWindow, "Account Summary", false, false)
+        val accountSummary = au.findNodeByText(rootInActiveWindow, "Account Summary", true, false)
         accountSummary?.apply {
-            performTap(42, 120)
+            performTap(42.toFloat(), 120.toFloat(), 120)
             isStatement = false
             isGetBalance = false
             scrollCounter = 0;
             totalBalance = ""
-            isTransactionAccount = true
-            isTransactionAccountDetails = true
+            isTransactionAccount = false
+            isTransactionAccountDetails = false
 
         }
     }
 
 
     private fun filterList(): MutableList<String> {
-        val mainList = au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
+        val mainList = au.listAllTextsInActiveWindow(rootInActiveWindow)
         val mutableList = mutableListOf<String>()
-        if (mainList.contains("Mini Statement")) {
+        if (mainList.contains("Mini Statement") && mainList.contains("Welcome  ")) {
             val unfilteredList = mainList.filter { it.isNotEmpty() }
             val miniIndex = unfilteredList.indexOf("Mini Statement")
             val welcomeIndex = unfilteredList.indexOf("Welcome  ")
-            val separatedList =
-                unfilteredList.subList(miniIndex, welcomeIndex).toMutableList()
-            separatedList.removeAt(0)
-            println("modifiedList $separatedList")
-            mutableList.addAll(separatedList)
-
+            if (miniIndex < welcomeIndex) {
+                val separatedList = unfilteredList.subList(miniIndex, welcomeIndex).toMutableList()
+                separatedList.removeAt(0)
+                mutableList.addAll(separatedList)
+            }
         }
         return mutableList
     }
 
+
     private fun readTransaction() {
-        try {
-            val output = JSONArray()
-            val mainList = au.listAllTextsInActiveWindow(au.getTopMostParentNode(rootInActiveWindow))
-            if (mainList.contains("Mini Statement")) {
-                val filterList = filterList();
+        val output = JSONArray()
+        val mainList = au.listAllTextsInActiveWindow(rootInActiveWindow).toMutableList()
+        if (mainList.contains("Mini Statement")) {
+            try {
+                performTap(317.toFloat(), 389.toFloat(), 650)
+                Thread.sleep(2500)
+                mainList.remove("Account Information");
+                mainList.remove("Mini Statement");
+                mainList.remove("Account Summary")
+                val unfilteredList = mainList.filter { it.isNotEmpty() }
+                val filterList = unfilteredList.toMutableList()
                 println("filterList = $filterList")
                 for (i in filterList.indices step 3) {
                     val date = filterList[i]
@@ -397,11 +407,15 @@ class RecorderService : AccessibilityService() {
                     } catch (e: JSONException) {
                         throw java.lang.RuntimeException(e)
                     }
+                } else {
+                    isGetBalance = false
+                    isStatement = false
+                    totalBalance = ""
                 }
 
-            }
+            } catch (ignored: Exception) {
 
-        }catch (ignored: Exception) {
+            }
         }
     }
 
@@ -443,71 +457,78 @@ class RecorderService : AccessibilityService() {
 
     private fun checkForSessionExpiry() {
         val targetNode1 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Do you really want to Logout?", true, false
+            rootInActiveWindow, "Do you really want to Logout?", true, false
         )
-        val targetNode2 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Unable to process the request", false, false
-        )
-        val targetNode3 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Feedback", true, false
-        )
-        val targetNode4 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Dear Customer", true, false
-        )
+        val targetNode2 =
+            au.findNodeByText(rootInActiveWindow, "Unable to process the request", true, false)
+        val targetNode3 = au.findNodeByText(rootInActiveWindow, "Feedback", true, false)
+        val targetNode4 = au.findNodeByText(rootInActiveWindow, "Dear Customer", true, false)
         val targetNode5 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Unable to process the request, Please try again.", true, false
+            rootInActiveWindow,
+            "Unable to process the request, Please try again.",
+            true,
+            false
         )
-        val targetNode6 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Logout", true, false
-        )
+        val targetNode6 = au.findNodeByText(rootInActiveWindow, "Logout", true, false)
         val targetNode7 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "No Accounts found for Deposit Account. ", true, false
+            rootInActiveWindow,
+            "No Accounts found for Deposit Account. ",
+            true,
+            false
         )
         val targetNode8 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ),
+            rootInActiveWindow,
             "Due to some technical problems we are unable to process your request. Please try later.",
             true,
             false
         )
         val targetNode9 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ), "Unable to retrieve last 5 transactions. Please try later.", true, false
+            rootInActiveWindow,
+            "Unable to retrieve last 5 transactions. Please try later.",
+            true,
+            false
         )
         val targetNode10 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ),
+            rootInActiveWindow,
             "You have already logged in. In case you have not logged out of your earlier session please try later.",
             true,
             false
         )
         val targetNode11 = au.findNodeByText(
-            au.getTopMostParentNode(
-                rootInActiveWindow
-            ),
+            rootInActiveWindow,
             "Invalid reference no or session already expired",
             true,
             false
         )
 
-        //Invalid reference no or session already expired
+        val targetNode13 = au.findNodeByText(
+            au.getTopMostParentNode(
+                rootInActiveWindow
+            ),
+            "Unable to contact the server. Please check your device network connectivity",
+            true,
+            false
+        )
+        //Due to technical issue we are unable to process your request. Please try later.
+        //Unable to contact the server. Please check your device network connectivity
+        //Unable to process your request currently. Please try again later.
+
+        val targetNode15 = au.findNodeByText(
+            au.getTopMostParentNode(
+                rootInActiveWindow
+            ),
+            "Unable to process your request currently. Please try again later.",
+            true,
+            false
+        )
+        val targetNode14 = au.findNodeByText(
+            au.getTopMostParentNode(
+                rootInActiveWindow
+            ),
+            "Sorry! We are unable to process your request at this time. Kindly come back after some time. We appreciate your patience.",
+            true,
+            false
+        )
         if (targetNode1 != null) {
             val logoutButton = au.findNodeByText(
                 au.getTopMostParentNode(
@@ -521,19 +542,7 @@ class RecorderService : AccessibilityService() {
                 logoutButton.recycle()
             }
         }
-        if (targetNode2 != null) {
-            val button = au.findNodeByText(
-                au.getTopMostParentNode(
-                    rootInActiveWindow
-                ), "OK", true, true
-            )
-            if (button != null) {
-                val outBounds = Rect()
-                button.getBoundsInScreen(outBounds)
-                performTap(outBounds.centerX(), outBounds.centerY())
-                button.recycle()
-            }
-        }
+
         if (targetNode3 != null) {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
@@ -545,10 +554,12 @@ class RecorderService : AccessibilityService() {
                 button.getBoundsInScreen(outBounds)
                 performTap(outBounds.centerX(), outBounds.centerY())
                 button.recycle()
-                isStatement = false
-                isTransactionAccount = false
-                isAccountSummary = false
                 isGetBalance = false
+                isStatement = false
+                isTransactionAccountDetails = false
+                isTransactionAccount = false
+                totalBalance = ""
+                isAccountSummary = false
                 // scrollCounter = 0
                 ticker.startReAgain()
             }
@@ -557,7 +568,7 @@ class RecorderService : AccessibilityService() {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
                     rootInActiveWindow
-                ), "OK", true, true
+                ), "OK", false, false
             )
             if (button != null) {
                 val outBounds = Rect()
@@ -571,7 +582,7 @@ class RecorderService : AccessibilityService() {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
                     rootInActiveWindow
-                ), "OK", true, true
+                ), "OK", false, false
             )
             if (button != null) {
                 val outBounds = Rect()
@@ -586,51 +597,25 @@ class RecorderService : AccessibilityService() {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
                     rootInActiveWindow
-                ), "OK", true, true
+                ), "OK", false, false
             )
             if (button != null) {
                 val outBounds = Rect()
                 button.getBoundsInScreen(outBounds)
                 val isClicked = performTap(outBounds.centerX(), outBounds.centerY())
                 if (isClicked) {
-                    isStatement = false
-                    isTransactionAccount = false
-                    isAccountSummary = false
                     isGetBalance = false
+                    isStatement = false
                     isTransactionAccountDetails = false
+                    isTransactionAccount = false
                     totalBalance = ""
+                    isAccountSummary = false
                     ticker.startReAgain()
                 }
             }
         }
-        if (targetNode7 != null) {
-            val button = au.findNodeByText(
-                au.getTopMostParentNode(
-                    rootInActiveWindow
-                ), "OK", true, true
-            )
-            if (button != null) {
-                val outBounds = Rect()
-                button.getBoundsInScreen(outBounds)
-                performTap(outBounds.centerX(), outBounds.centerY())
-                button.recycle()
-                ticker.startReAgain()
-            }
-        }
-        if (targetNode8 != null) {
-            val button = au.findNodeByText(
-                au.getTopMostParentNode(
-                    rootInActiveWindow
-                ), "OK", true, true
-            )
-            if (button != null) {
-                val outBounds = Rect()
-                button.getBoundsInScreen(outBounds)
-                performTap(outBounds.centerX(), outBounds.centerY())
-                button.recycle()
-                ticker.startReAgain()
-            }
-        }
+
+
         if (targetNode9 != null) {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
@@ -646,25 +631,31 @@ class RecorderService : AccessibilityService() {
                 ticker.startReAgain()
             }
         }
-        if (targetNode10 != null) {
+
+        if (targetNode7 != null) {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
                     rootInActiveWindow
-                ), "OK", true, true
+                ), "OK", true, false
             )
             if (button != null) {
                 val outBounds = Rect()
                 button.getBoundsInScreen(outBounds)
                 performTap(outBounds.centerX(), outBounds.centerY())
                 button.recycle()
+                isTransactionAccountDetails = false
+                isTransactionAccount = false
                 ticker.startReAgain()
             }
         }
-        if (targetNode11 != null) {
+
+
+
+        if (targetNode2 != null || targetNode15 !=null || targetNode11 != null || targetNode13 != null || targetNode14 != null || targetNode10 != null || targetNode8 != null) {
             val button = au.findNodeByText(
                 au.getTopMostParentNode(
                     rootInActiveWindow
-                ), "OK", true, true
+                ), "OK", true, false
             )
             if (button != null) {
                 val outBounds = Rect()
@@ -703,7 +694,7 @@ class RecorderService : AccessibilityService() {
     }
 
 
-    private fun performTap(x: Float, y: Float, duration: Long) {
+    private fun performTap(x: Float, y: Float, duration: Long): Boolean {
         Log.d("Accessibility", "Tapping $x and $y")
         val p = Path()
         p.moveTo(x, y)
@@ -717,6 +708,7 @@ class RecorderService : AccessibilityService() {
             }
         }, null)
         Log.d("Dispatch Result", dispatchResult.toString())
+        return dispatchResult
     }
 
     private fun getUPIId(description: String): String {
